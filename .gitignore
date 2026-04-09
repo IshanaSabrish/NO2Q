@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+backend/venv/
+backend/.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Build
+dist/
+build/
+.next/
+
+# Database
+no2q_db/
+
+# Artifacts
+C:/Users/dharshini/.gemini/antigravity/
+brain/
+scratch/
+logs/
