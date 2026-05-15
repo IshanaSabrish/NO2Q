@@ -22,7 +22,7 @@ async def seed_db():
         "phone": "9999999999",
         "email": "admin@no2q.com",
         "role": "admin",
-        "password": get_password_hash("admin123"),
+        "password_hash": get_password_hash("admin123"),
         "status": "approved"
     }
     owner_user = {
@@ -30,7 +30,7 @@ async def seed_db():
         "phone": "8888888888",
         "email": "owner@paradise.com",
         "role": "owner",
-        "password": get_password_hash("owner123"),
+        "password_hash": get_password_hash("owner123"),
         "status": "approved"
     }
     owner_user_2 = {
@@ -38,7 +38,7 @@ async def seed_db():
         "phone": "8888888877",
         "email": "owner@biryanihouse.com",
         "role": "owner",
-        "password": get_password_hash("owner123"),
+        "password_hash": get_password_hash("owner123"),
         "status": "pending"
     }
     customer_user = {

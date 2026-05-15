@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/store';
-import { LogOut, MapPin, Search, QrCode, Clock, Star, ChevronRight, Users, Utensils } from 'lucide-react';
+import { LogOut, MapPin, Search, QrCode, Clock, Star, ChevronRight, Users, Utensils, LocateFixed } from 'lucide-react';
 
 const API = 'http://localhost:8000/api';
 
 const Home = () => {
   const [restaurants, setRestaurants] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const user = useAuthStore(state => state.user);
   const logout = useAuthStore(state => state.logout);
@@ -28,7 +29,44 @@ const Home = () => {
     fetchRestaurants();
   }, []);
 
-  const filtered = restaurants.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const VALID_CITIES = ['Adyar', 'Anna Nagar', 'T. Nagar', 'Velachery', 'Tambaram', 'Chromepet', 'Guindy', 'OMR', 'Porur', 'Mylapore', 'Alwarpet', 'Besant Nagar'];
+
+  const handleCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+    setLoading(true);
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      try {
+        const { latitude, longitude } = position.coords;
+        const res = await axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+        const area = res.data.address?.suburb || res.data.address?.neighbourhood || res.data.address?.city || '';
+        
+        if (area) {
+            setLocationFilter(area);
+        } else {
+            alert("Could not determine your area.");
+        }
+      } catch (err) {
+        console.error("Geocoding failed", err);
+        alert("Failed to get location automatically. You can still select it manually.");
+      } finally {
+        setLoading(false);
+      }
+    }, () => {
+      setLoading(false);
+      alert("Location access denied. Please allow location permissions.");
+    });
+  };
+
+  const locationOptions = [...new Set([...VALID_CITIES, locationFilter].filter(Boolean))];
+
+  const filtered = restaurants.filter(r => {
+    const matchesSearch = r.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesLoc = locationFilter ? r.location?.toLowerCase().includes(locationFilter.toLowerCase()) : true;
+    return matchesSearch && matchesLoc;
+  });
 
   return (
     <div className="fade-in">
@@ -70,19 +108,41 @@ const Home = () => {
             Join live restaurant queues from your phone and get notified when your table is ready.
           </p>
           
-          <div className="card" style={{ maxWidth: '640px', margin: '0 auto', display: 'flex', padding: '0.4rem', boxShadow: 'var(--shadow)' }}>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1.2rem' }}>
+          <div className="card" style={{ maxWidth: '750px', margin: '0 auto', display: 'flex', padding: '0.4rem', boxShadow: 'var(--shadow)', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', padding: '0 1rem', minWidth: '200px' }}>
               <Search size={18} style={{ color: 'var(--text-light)', marginRight: '0.8rem', flexShrink: 0 }} />
               <input 
                 type="text" 
                 placeholder="Search restaurants..."
                 className="input"
-                style={{ border: 'none', padding: '0.9rem 0', boxShadow: 'none' }}
+                style={{ border: 'none', padding: '0.9rem 0', boxShadow: 'none', width: '100%' }}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <button className="btn btn-primary" style={{ padding: '0.8rem 1.5rem' }}>Search</button>
+            
+            <div style={{ width: '1px', background: 'var(--border-light)', margin: '0.5rem 0' }}></div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', padding: '0 1rem', minWidth: '150px' }}>
+              <MapPin size={18} style={{ color: 'var(--text-light)', marginRight: '0.8rem', flexShrink: 0 }} />
+              <select 
+                value={locationFilter} 
+                onChange={(e) => setLocationFilter(e.target.value)}
+                style={{ border: 'none', background: 'transparent', outline: 'none', color: 'var(--text-color)', fontSize: '0.95rem', width: '100%', cursor: 'pointer' }}
+              >
+                <option value="">All Locations</option>
+                {locationOptions.map(loc => (
+                  <option key={loc} value={loc}>{loc}</option>
+                ))}
+              </select>
+              <button 
+                onClick={handleCurrentLocation}
+                title="Use My Current Location"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-green)', marginLeft: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <LocateFixed size={18} />
+              </button>
+            </div>
           </div>
         </div>
       </section>

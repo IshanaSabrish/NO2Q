@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app.core.database import get_db
 from app.services.websocket import manager
 from bson import ObjectId
+from typing import Optional
 
 router = APIRouter()
 
@@ -12,6 +13,53 @@ async def get_tables(restaurant_id: str):
     for t in tables:
         t["_id"] = str(t["_id"])
     return tables
+
+@router.get("/restaurant/{restaurant_id}/availability")
+async def get_availability(restaurant_id: str, group_size: int = 1):
+    """Return table availability + whether group_size can be seated right now."""
+    db = get_db()
+    tables = await db["tables"].find({"restaurant_id": restaurant_id}).sort("number", 1).to_list(200)
+    for t in tables:
+        t["_id"] = str(t["_id"])
+
+    empty_tables = [t for t in tables if t["status"] == "empty"]
+    total_available_seats = sum(t["seats"] for t in empty_tables)
+
+    can_seat_now = False
+    if group_size <= total_available_seats:
+        for t in sorted(empty_tables, key=lambda x: x["seats"]):
+            if t["seats"] >= group_size:
+                can_seat_now = True
+                break
+        if not can_seat_now:
+            running = 0
+            for t in sorted(empty_tables, key=lambda x: x["seats"]):
+                running += t["seats"]
+                if running >= group_size:
+                    can_seat_now = True
+                    break
+
+    # Calculate an accurate estimate for the frontend based on the monotonic queue
+    estimated_wait_mins = 0
+    if not can_seat_now:
+        last_token = await db["tokens"].find_one(
+            {"restaurant_id": restaurant_id, "status": {"$in": ["waiting", "called", "delayed"]}},
+            sort=[("position", -1)]
+        )
+        if last_token and "estimated_time_mins" in last_token:
+            estimated_wait_mins = last_token["estimated_time_mins"] + 2
+        else:
+            estimated_wait_mins = 15
+
+    return {
+        "tables": tables,
+        "total_tables": len(tables),
+        "empty_count": len(empty_tables),
+        "total_available_seats": total_available_seats,
+        "can_seat_now": can_seat_now,
+        "group_size": group_size,
+        "estimated_wait_mins": estimated_wait_mins,
+    }
 
 @router.post("/add")
 async def add_table(table_data: dict):

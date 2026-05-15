@@ -72,74 +72,12 @@ const PublicDisplay = () => {
         <h1 style={{ fontSize: '2.5rem', fontWeight: 900, color: 'white', margin: 0 }}>{restaurant.name}</h1>
       </div>
       
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        {/* Left: Tokens */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          {/* Now Serving */}
-          <div style={{ 
-            background: 'linear-gradient(135deg, #38A169 0%, #2F855A 100%)', 
-            borderRadius: '24px', 
-            padding: '3rem', 
-            textAlign: 'center',
-            boxShadow: '0 20px 60px rgba(56, 161, 105, 0.3)',
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center'
-          }}>
-            <p style={{ fontSize: '1.2rem', fontWeight: 700, opacity: 0.8, marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '3px' }}>Now Serving</p>
-            <div style={{ fontSize: '6rem', fontWeight: 900, lineHeight: 1 }}>
-              {serving.current && serving.current.length > 0 ? serving.current[0].token_number : '---'}
-            </div>
-            {serving.current && serving.current.length > 0 && (
-              <p style={{ marginTop: '1rem', fontSize: '1.1rem', opacity: 0.8, fontWeight: 600 }}>
-                {serving.current[0].customer_name} • {serving.current[0].group_size} guests
-              </p>
-            )}
-            {serving.current && serving.current.length > 1 && (
-              <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'center', gap: '2rem' }}>
-                {serving.current.slice(1, 4).map(t => (
-                  <div key={t._id} style={{ opacity: 0.6 }}>
-                    <span style={{ fontWeight: 800 }}>{t.token_number}</span>
-                    <span style={{ fontSize: '0.8rem', marginLeft: '0.5rem' }}>{t.customer_name}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Up Next */}
-          <div style={{ 
-            background: 'rgba(255,255,255,0.05)', 
-            borderRadius: '20px', 
-            padding: '2rem',
-            border: '1px solid rgba(255,255,255,0.1)'
-          }}>
-            <h3 style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '1.5rem' }}>Up Next</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '1rem' }}>
-              {serving.next.length === 0 ? (
-                <p style={{ opacity: 0.3, gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>No one in queue</p>
-              ) : serving.next.map(t => (
-                <div key={t._id} style={{ 
-                  background: 'rgba(255,255,255,0.08)', 
-                  borderRadius: '16px', 
-                  padding: '1.5rem', 
-                  textAlign: 'center',
-                  border: '1px solid rgba(255,255,255,0.08)'
-                }}>
-                  <div style={{ fontSize: '2rem', fontWeight: 900 }}>{t.token_number}</div>
-                  <p style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: '0.3rem' }}>{t.group_size}p</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', maxWidth: '800px', margin: '0 auto' }}>
         {/* Right: Tables */}
         <div style={{ 
           background: 'rgba(255,255,255,0.05)', 
           borderRadius: '20px', 
-          padding: '2rem',
+          padding: '3rem',
           border: '1px solid rgba(255,255,255,0.1)'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>

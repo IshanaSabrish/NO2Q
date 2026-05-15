@@ -110,19 +110,12 @@ async def login(payload: dict):
     
     print(f"DEBUG: is_email={is_email}, is_digit={is_digit}, length={length}")
     
-    # Simplified Customer Login: 10-digit phone number
+    # Customer Login: 10-digit phone number — must already be registered
     if not is_email and is_digit and length == 10:
-        print("DEBUG: Entering simplified customer login path")
+        print("DEBUG: Entering customer login path")
         user = await UserModel.find_one(UserModel.phone == identifier)
         if not user:
-            # Auto-register customer if not found
-            user = UserModel(
-                name=f"Customer {identifier[-4:]}",
-                phone=identifier,
-                role="customer",
-                status="approved",
-            )
-            await user.insert()
+            raise HTTPException(status_code=404, detail="No account found with this phone number. Please register first.")
         
         token = create_access_token({"sub": str(user.id), "role": "customer"})
         return {

@@ -1,9 +1,61 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import RedirectResponse, FileResponse, StreamingResponse
 from app.core.database import get_db
 from bson import ObjectId
 import uuid
+import os
+import urllib.parse
 
 router = APIRouter()
+
+UPLOAD_DIR = "uploads"
+
+@router.get("/documents/{restaurant_id}/{doc_type}")
+async def get_restaurant_document(restaurant_id: str, doc_type: str):
+    """Get the URL for a restaurant's FSSAI or GST document"""
+    if doc_type not in ("fssai", "gst"):
+        raise HTTPException(status_code=400, detail="doc_type must be 'fssai' or 'gst'")
+    db = get_db()
+    restaurant = await db["restaurants"].find_one({"_id": ObjectId(restaurant_id)})
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+    doc_url = restaurant.get(doc_type, "")
+    if not doc_url:
+        raise HTTPException(status_code=404, detail=f"No {doc_type.upper()} document uploaded")
+    # Extract filename from URL to infer extension
+    filename = doc_url.split("/")[-1]
+    return {"url": doc_url, "doc_type": doc_type, "filename": filename}
+
+
+@router.get("/download/{restaurant_id}/{doc_type}")
+async def download_restaurant_document(restaurant_id: str, doc_type: str):
+    """Stream / download a restaurant's FSSAI or GST document file"""
+    if doc_type not in ("fssai", "gst"):
+        raise HTTPException(status_code=400, detail="doc_type must be 'fssai' or 'gst'")
+    db = get_db()
+    restaurant = await db["restaurants"].find_one({"_id": ObjectId(restaurant_id)})
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+    doc_url = restaurant.get(doc_type, "")
+    if not doc_url:
+        raise HTTPException(status_code=404, detail=f"No {doc_type.upper()} document uploaded")
+
+    # doc_url looks like http://localhost:8000/static/<uuid>.<ext>
+    filename = doc_url.split("/")[-1]
+    file_path = os.path.join(UPLOAD_DIR, filename)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Document file not found on server")
+
+    rest_name = restaurant.get("name", "restaurant").replace(" ", "_")
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else "pdf"
+    download_name = f"{rest_name}_{doc_type.upper()}_document.{ext}"
+
+    return FileResponse(
+        path=file_path,
+        filename=download_name,
+        media_type="application/octet-stream",
+    )
 
 @router.get("/requests")
 async def get_pending_requests():

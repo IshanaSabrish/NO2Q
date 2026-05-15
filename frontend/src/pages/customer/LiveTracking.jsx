@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Clock, RefreshCcw, Users, MapPin, ArrowLeft, XCircle, Bell, Utensils, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Clock, RefreshCcw, Users, MapPin, ArrowLeft, XCircle, Bell, Utensils, CheckCircle2, AlertTriangle, LogOut, ThumbsUp } from 'lucide-react';
 
 const API = 'http://localhost:8000/api';
 
@@ -9,19 +9,34 @@ const LiveTracking = () => {
     const { tokenId } = useParams();
     const [token, setToken] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
+    const [availability, setAvailability] = useState(null);
     const [loading, setLoading] = useState(true);
     const [countdown, setCountdown] = useState(0);
+    const [leavingQueue, setLeavingQueue] = useState(false);
     const navigate = useNavigate();
     const wsRef = useRef(null);
 
     const fetchToken = async () => {
         try {
             const res = await axios.get(`${API}/queue/token/${tokenId}`);
-            setToken(res.data);
+            const tok = res.data;
+            setToken(tok);
             
-            if (res.data.restaurant_id && !restaurant) {
-                const restRes = await axios.get(`${API}/restaurants/${res.data.restaurant_id}`);
-                setRestaurant(restRes.data);
+            if (tok.restaurant_id) {
+                // Fetch restaurant info if not yet loaded
+                if (!restaurant) {
+                    const restRes = await axios.get(`${API}/restaurants/${tok.restaurant_id}`);
+                    setRestaurant(restRes.data);
+                }
+                // Check seat availability for this group size
+                if (['waiting', 'called', 'delayed'].includes(tok.status)) {
+                    try {
+                        const avRes = await axios.get(`${API}/tables/restaurant/${tok.restaurant_id}/availability`, {
+                            params: { group_size: tok.group_size }
+                        });
+                        setAvailability(avRes.data);
+                    } catch (_) {}
+                }
             }
         } catch (err) {
             console.error("Token fetch fail", err);
@@ -77,15 +92,15 @@ const LiveTracking = () => {
         return () => clearInterval(interval);
     }, [token]);
 
-    const handleCancel = async () => {
-        if (confirm("Are you sure you want to cancel your token?")) {
-            try {
-                await axios.post(`${API}/queue/${tokenId}/cancel`);
-                alert("Token cancelled successfully.");
-                navigate('/home');
-            } catch (err) {
-                alert(err.response?.data?.detail || "Cancellation failed");
-            }
+    const handleCancel = async (skipConfirm = false) => {
+        if (!skipConfirm && !confirm("Are you sure you want to leave the queue?")) return;
+        setLeavingQueue(true);
+        try {
+            await axios.post(`${API}/queue/${tokenId}/cancel`);
+            navigate('/home');
+        } catch (err) {
+            alert(err.response?.data?.detail || "Cancellation failed");
+            setLeavingQueue(false);
         }
     };
 
@@ -171,7 +186,7 @@ const LiveTracking = () => {
                                     {countdown > 0 ? 'Countdown' : 'Est. Wait'}
                                 </p>
                                 <h4 style={{ fontSize: '1.8rem', margin: 0, fontVariantNumeric: 'tabular-nums' }}>
-                                    {countdown > 0 ? formatTime(countdown) : `${token.estimated_time_mins}m`}
+                                    {countdown > 0 ? formatTime(countdown) : `${token.estimated_time_mins > 0 ? token.estimated_time_mins : 15}m`}
                                 </h4>
                             </div>
                         </div>
@@ -216,16 +231,63 @@ const LiveTracking = () => {
                     </div>
                 </div>
 
-                {/* Actions */}
-                {isActive && (
+                {/* ── No-Table Banner: group size > available seats ── */}
+                {isActive && availability && !availability.can_seat_now && (
+                    <div style={{
+                        marginTop: '1.5rem',
+                        background: '#FFF7ED',
+                        border: '2px solid #F59E0B',
+                        borderRadius: '16px',
+                        padding: '1.4rem',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
+                            <AlertTriangle size={20} style={{ color: '#D97706', flexShrink: 0 }} />
+                            <span style={{ fontWeight: 800, color: '#92400E', fontSize: '0.95rem' }}>
+                                No Table Available Yet
+                            </span>
+                        </div>
+                        <p style={{ fontSize: '0.82rem', color: '#78350F', lineHeight: 1.6, marginBottom: '0.6rem' }}>
+                            Your group of <strong>{token.group_size}</strong> needs&nbsp;
+                            <strong>{token.group_size} seats</strong>, but only&nbsp;
+                            <strong>{availability.total_available_seats} seat{availability.total_available_seats !== 1 ? 's' : ''}</strong>&nbsp;
+                            across <strong>{availability.empty_count} table{availability.empty_count !== 1 ? 's' : ''}</strong> are free right now.
+                            You're still in the queue — we'll seat you as soon as enough space opens up.
+                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 700, color: '#B45309', marginBottom: '1.1rem' }}>
+                            <Clock size={14} />
+                            Estimated wait: <strong style={{ marginLeft: '0.2rem' }}>~{token.estimated_time_mins > 0 ? token.estimated_time_mins : 15} mins</strong>
+                        </div>
+                        {/* Stay / Leave buttons */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                            <button
+                                className="btn"
+                                style={{ background: '#ECFDF5', color: '#065F46', border: '2px solid #10B981', fontWeight: 700, fontSize: '0.82rem', padding: '0.7rem' }}
+                                onClick={() => {/* already staying — just a reassurance button */}}
+                            >
+                                <ThumbsUp size={15} /> Stay in Queue
+                            </button>
+                            <button
+                                className="btn btn-danger"
+                                style={{ fontSize: '0.82rem', padding: '0.7rem' }}
+                                onClick={() => handleCancel(true)}
+                                disabled={leavingQueue}
+                            >
+                                <LogOut size={15} /> {leavingQueue ? 'Leaving…' : 'Leave Queue'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Actions (generic cancel — only shown when seats ARE available) */}
+                {isActive && (!availability || availability.can_seat_now) && (
                     <div style={{ marginTop: '1.5rem' }}>
                         <div className="card" style={{ padding: '1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
                                 <h4 style={{ fontSize: '1rem', margin: 0 }}>Plans Changed?</h4>
                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Cancel to free up the queue spot.</p>
                             </div>
-                            <button onClick={handleCancel} className="btn btn-danger" style={{ fontSize: '0.8rem' }}>
-                                <XCircle size={15} /> Cancel
+                            <button onClick={() => handleCancel(false)} className="btn btn-danger" style={{ fontSize: '0.8rem' }}>
+                                <XCircle size={15} /> Leave Queue
                             </button>
                         </div>
                     </div>

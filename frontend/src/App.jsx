@@ -20,7 +20,7 @@ const PrivateRoute = ({ children, roleRequired }) => {
   if (roleRequired && user.role !== roleRequired) return <Navigate to="/login" />;
   
   // Strict status check for owner
-  if (user.role === 'owner' && user.status === 'pending') {
+  if (user.role === 'owner' && (user.status === 'pending' || user.status === 'rejected')) {
      if (window.location.pathname === '/owner-dashboard' || window.location.pathname === '/owner/setup') {
         return <Navigate to="/waiting-approval" />;
      }

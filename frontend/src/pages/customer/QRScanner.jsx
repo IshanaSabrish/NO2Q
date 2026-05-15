@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, QrCode, Camera } from 'lucide-react';
+import { ArrowLeft, QrCode, Camera, ImagePlus } from 'lucide-react';
 import axios from 'axios';
 
 const API = 'http://localhost:8000/api';
@@ -12,40 +12,82 @@ const QRScanner = () => {
   const navigate = useNavigate();
   const scannerRef = useRef(null);
 
-  useEffect(() => {
-    const scanner = new Html5QrcodeScanner('reader', {
-      qrbox: { width: 250, height: 250 },
-      fps: 5,
-    });
-
-    scanner.render(async (decodedText) => {
-      scanner.clear();
-      setScanResult(decodedText);
-      
-      // Check if it's a NO2Q QR code
-      if (decodedText.startsWith('no2q-')) {
-        try {
-          const res = await axios.get(`${API}/restaurants/qr/${decodedText}`);
-          navigate(`/restaurant/${res.data._id}?fromQR=true`);
-        } catch (err) {
-          setError('Restaurant not found for this QR code');
-        }
-      } else if (decodedText.match(/^[a-f0-9]{24}$/)) {
-        // Direct restaurant ID
-        navigate(`/restaurant/${decodedText}`);
-      } else {
-        setError('Invalid QR code format');
+  const processResult = async (decodedText) => {
+    if (scannerRef.current?.isScanning) {
+      await scannerRef.current.stop().catch(e=>console.log(e));
+      scannerRef.current.clear();
+    }
+    setScanResult(decodedText);
+    
+    if (decodedText.startsWith('no2q-')) {
+      try {
+        const res = await axios.get(`${API}/restaurants/qr/${decodedText}`);
+        navigate(`/restaurant/${res.data._id}?fromQR=true`);
+      } catch (err) {
+        setError('Restaurant not found for this QR code');
       }
-    }, (err) => {
-      // Scanning in progress
-    });
+    } else if (decodedText.includes('/restaurant/')) {
+      try {
+          const url = new URL(decodedText);
+          navigate(url.pathname + url.search);
+      } catch (e) {
+          const pathParts = decodedText.split('/restaurant/');
+          if (pathParts.length > 1) {
+              navigate(`/restaurant/${pathParts[1]}`);
+          } else {
+              setError('Invalid QR code URL');
+          }
+      }
+    } else if (decodedText.match(/^[a-f0-9]{24}$/)) {
+      navigate(`/restaurant/${decodedText}`);
+    } else {
+      setError('Invalid QR code format');
+    }
+  };
 
-    scannerRef.current = scanner;
+  useEffect(() => {
+    let mounted = true;
+    const html5QrCode = new Html5Qrcode("reader");
+    scannerRef.current = html5QrCode;
+
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      (text) => { if(mounted) processResult(text); },
+      () => {}
+    ).then(() => {
+      if (!mounted) {
+        html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
+      }
+    }).catch(err => {
+      if(mounted) setError("Camera access denied or unavailable.");
+    });
 
     return () => {
-      try { scanner.clear(); } catch (e) {}
+      mounted = false;
+      if (html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
+      }
     };
   }, [navigate]);
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (scannerRef.current?.isScanning) {
+      await scannerRef.current.stop().catch(() => {});
+      scannerRef.current.clear();
+    }
+    
+    try {
+      const tempQr = new Html5Qrcode("reader");
+      const decodedText = await tempQr.scanFile(file, true);
+      processResult(decodedText);
+    } catch (err) {
+      setError("Could not detect a valid QR code in this image.");
+    }
+  };
 
   return (
     <div className="fade-in" style={{ minHeight: '100vh', background: 'var(--cream-white)' }}>
@@ -83,9 +125,15 @@ const QRScanner = () => {
             </div>
           )}
           
-          <button className="btn btn-outline" onClick={() => navigate('/home')} style={{ width: '100%', marginTop: '1rem' }}>
-            <ArrowLeft size={16} /> Back to Restaurants
-          </button>
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+            <button className="btn btn-outline" onClick={() => navigate('/home')} style={{ flex: 1 }}>
+              <ArrowLeft size={16} /> Back
+            </button>
+            <label className="btn btn-primary" style={{ flex: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+              <ImagePlus size={16} /> Upload Image
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileUpload} />
+            </label>
+          </div>
         </div>
       </div>
     </div>

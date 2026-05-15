@@ -38,6 +38,8 @@ async def recalculate_queue(restaurant_id: str):
     for t in tables_cursor:
         if t["status"] == "cleaning":
             tables_avail[str(t["_id"])] = 5
+        elif t["status"] == "full":
+            tables_avail[str(t["_id"])] = avg_time
     
     # Update availability for dining tokens
     dining_tokens = [tk for tk in tokens if tk["status"] == "dining"]
@@ -54,6 +56,7 @@ async def recalculate_queue(restaurant_id: str):
     waiting_tokens.sort(key=lambda x: x["position"] if x.get("position") else 999999)
     
     updated_tokens = []
+    prev_estimated_mins = 0
     
     for idx, tk in enumerate(waiting_tokens):
         new_position = idx + 1
@@ -121,7 +124,19 @@ async def recalculate_queue(restaurant_id: str):
                 if tables_avail:
                     allocated_tids = list(tables_avail.keys())[:1] # Just assign some table to block it
             
-        estimated_mins = int(best_time)
+        # Add an operational buffer (e.g. seating/cleaning time per group)
+        # to ensure wait times are never 0 and scale logically with position.
+        operational_buffer = (new_position - 1) * 2 + 3
+        estimated_mins = int(best_time) + operational_buffer
+        
+        # --- LOGICAL QUEUE ENFORCEMENT ---
+        # Ensure that wait times are strictly logical (FIFO-like) for the customer/owner view.
+        # A customer behind in the queue should not be shown a shorter wait time than the customer ahead,
+        # even if a smaller table happens to be available earlier.
+        if estimated_mins < prev_estimated_mins:
+            estimated_mins = prev_estimated_mins + 2
+            
+        prev_estimated_mins = estimated_mins
         
         # Book these tables for this turn
         for tid in allocated_tids:
@@ -359,7 +374,6 @@ async def update_status(token_id: str, status: str, table_id: Optional[str] = No
     # ─── DINING: Customer arrived, assign table(s) ───
     elif status == "dining":
         print(f"Starting dining for token {token_id}")
-        update_data["dining_at"] = datetime.utcnow()
         group_size = token["group_size"]
         
         allocated_tables = []
@@ -381,6 +395,21 @@ async def update_status(token_id: str, status: str, table_id: Optional[str] = No
             }).to_list(100)
             
             empty_tables.sort(key=lambda x: x["seats"])
+            total_available_seats = sum(t["seats"] for t in empty_tables)
+            
+            # ── CAPACITY GUARD: block dining if not enough seats exist ──
+            if total_available_seats < group_size:
+                print(f"CAPACITY BLOCK: need {group_size} seats, only {total_available_seats} available")
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "NO_TABLE_AVAILABLE",
+                        "message": f"Not enough seats for a group of {group_size}. Only {total_available_seats} seat(s) free across {len(empty_tables)} table(s). Customer must wait in queue.",
+                        "group_size": group_size,
+                        "available_seats": total_available_seats,
+                        "available_tables": len(empty_tables),
+                    }
+                )
             
             # Single fit
             for t in empty_tables:
@@ -411,6 +440,35 @@ async def update_status(token_id: str, status: str, table_id: Optional[str] = No
                 search(0, [], 0)
                 if best_c[0]:
                     allocated_tables = best_c[0]
+            
+            # ── COMBO GUARD: no valid combo found (edge case) ──
+            if not allocated_tables:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "NO_TABLE_AVAILABLE",
+                        "message": f"Cannot find a suitable table combination for {group_size} guests right now. Customer must wait in queue.",
+                        "group_size": group_size,
+                        "available_seats": total_available_seats,
+                        "available_tables": len(empty_tables),
+                    }
+                )
+        else:
+            # Manual Assignment Capacity Check
+            total_allocated_seats = sum(t["seats"] for t in allocated_tables)
+            if total_allocated_seats < group_size:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "NO_TABLE_AVAILABLE",
+                        "message": f"Selected table(s) only have {total_allocated_seats} seats for a group of {group_size}. Cannot assign.",
+                        "group_size": group_size,
+                        "available_seats": total_allocated_seats,
+                        "available_tables": len(allocated_tables),
+                    }
+                )
+        
+        update_data["dining_at"] = datetime.utcnow()
         
         if allocated_tables:
             table_ids = [t["_id"] for t in allocated_tables]

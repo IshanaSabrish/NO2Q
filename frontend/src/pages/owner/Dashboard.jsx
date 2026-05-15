@@ -20,6 +20,7 @@ const OwnerDashboard = () => {
     const [showTelegramModal, setShowTelegramModal] = useState(false);
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [assigningToken, setAssigningToken] = useState(null);
+    const [assignError, setAssignError] = useState(null);
     const [telegramChatId, setTelegramChatId] = useState('');
     const [uploading, setUploading] = useState(false);
     const navigate = useNavigate();
@@ -66,6 +67,7 @@ const OwnerDashboard = () => {
 
     const handleStatusUpdate = async (tokenId, status, tableId = null) => {
         try {
+            setAssignError(null);
             let url = `${API}/queue/${tokenId}/status?status=${status}`;
             if (tableId) url += `&table_id=${tableId}`;
             await axios.post(url);
@@ -74,8 +76,15 @@ const OwnerDashboard = () => {
             setAssigningToken(null);
         } catch (err) {
             console.error("Action error:", err);
-            const msg = err.response?.data?.detail || "Action failed. Check server logs.";
-            alert(msg);
+            const detail = err.response?.data?.detail;
+            const msg = detail?.message || detail || "Action failed. Check server logs.";
+            
+            // If the assign modal is open, show the error inside it instead of an alert
+            if (showAssignModal && status === 'dining') {
+                setAssignError(msg);
+            } else {
+                alert(msg);
+            }
         }
     };
 
@@ -268,7 +277,7 @@ const OwnerDashboard = () => {
                                                 </button>
                                             )}
                                             {(t.status === 'waiting' || t.status === 'called' || t.status === 'delayed') && (
-                                                <button onClick={() => { setAssigningToken(t); setShowAssignModal(true); }} className="btn btn-success" style={{ padding: '0.6rem' }} title="Start Dining">
+                                                <button onClick={() => { setAssignError(null); setAssigningToken(t); setShowAssignModal(true); }} className="btn btn-success" style={{ padding: '0.6rem' }} title="Start Dining">
                                                     <Utensils size={16} />
                                                 </button>
                                             )}
@@ -473,7 +482,10 @@ const OwnerDashboard = () => {
                                 </div>
                                 <h4>Restaurant QR Code</h4>
                                 <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>Print this and place it at your entrance for customers to scan.</p>
-                                <button className="btn btn-primary" onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${restaurant?.qr_code}`, '_blank')}>
+                                <button className="btn btn-primary" onClick={() => {
+                                    const joinUrl = `${window.location.origin}/restaurant/${restaurant?._id}?fromQR=true`;
+                                    window.open(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(joinUrl)}`, '_blank');
+                                }}>
                                     Download High-Res QR
                                 </button>
                            </div>
@@ -517,6 +529,13 @@ const OwnerDashboard = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {assignError && (
+                            <div style={{ padding: '1rem', background: '#FFF5F5', border: '1px solid #FEB2B2', borderRadius: '10px', marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                                <AlertTriangle size={20} color="#C53030" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <span style={{ color: '#9B2C2C', fontSize: '0.9rem', lineHeight: 1.4, fontWeight: 600 }}>{assignError}</span>
+                            </div>
+                        )}
 
                         <h4 style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Select Table(s)</h4>
                         <div className="grid grid-cols-4" style={{ gap: '0.5rem', maxHeight: '200px', overflowY: 'auto', padding: '0.2rem' }}>
